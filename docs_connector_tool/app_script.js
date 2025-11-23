@@ -36,9 +36,9 @@ function doPost(e) {
         newDoc.saveAndClose();
 
         // 5. Make the link accessible (Edit Link)
-        // Optional: If you want it to be private, remove the line below,
-        // but the user will have to be logged into the owner account to view it.
-        newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
+        // By default, the file is private (Owner only).
+        // Uncomment the line below if you want it to be accessible by anyone with the link.
+        // newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
 
         return ContentService.createTextOutput(JSON.stringify({
             "status": "success",
