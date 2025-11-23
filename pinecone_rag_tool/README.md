@@ -13,7 +13,7 @@ This tool seamlessly integrates **Pinecone** vector databases into **OpenWebUI**
 ## 🚀 Features
 
 - **🔍 Smart Retrieval**: Automatically converts user queries into vectors and finds the most relevant documents.
-- **🤖 OpenAI Integration**: Uses `text-embedding-3-small` for high-quality, cost-effective embeddings.
+- **🤖 OpenAI Integration**: Uses OpenAI for high-quality, cost-effective embeddings.
 - **🌐 Auto-Discovery**: Automatically detects your Pinecone index host—no need to hunt for URLs!
 - **⚡ Real-time Feedback**: Provides visual status updates in the OpenWebUI chat (Connecting, Embedding, Searching...).
 - **🛠️ Easy Configuration**: Just plug in your API keys and Index Name directly in the UI.
