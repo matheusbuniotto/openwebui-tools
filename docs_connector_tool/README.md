@@ -47,9 +47,26 @@ A powerful tool for OpenWebUI that allows you to generate Google Docs from templ
 ## 💡 Usage
 
 1.  Enable the tool for your model in OpenWebUI.
-2.  Ask the model to create a document.
-    *   *Example*: "Create a proposal document for Acme Corp based on the template. Set the client to 'Acme Corp' and the date to 'October 24th'."
-3.  The model will detect the placeholders in your template (you might need to tell it what they are if it doesn't guess correctly, or just provide the JSON context) and generate the document.
+2.  **Prompt the model**:
+    
+    > **System Instruction / Prompt:**
+    >
+    > When using the `create_google_doc` tool, you must provide two arguments:
+    >
+    > **filename**: The final name of the file (e.g., "Proposal - Client X").
+    > **replacements_json**: A JSON string containing the replacements.
+    >
+    > **REPLACEMENT RULES**:
+    > *   The JSON keys must be IDENTICAL to the placeholders in the template document.
+    > *   If the document uses curly braces, include them in the JSON keys. Ex: use `"{name}"` and not `"name"`.
+    > *   The format must be: `{"{placeholder}": "New Text"}`.
+    >
+    > **EXAMPLE**:
+    > User: "Create an invoice for TechCorp for $500"
+    > Function Call:
+    > `create_google_doc(filename="Invoice - TechCorp", replacements_json='{"{COMPANY_NAME}": "TechCorp", "{INVOICE_VALUE}": "$500"}')`
+
+3.  The model will detect the placeholders in your template and generate the document.
 4.  The tool will return a link to the new document.
 
 ## ⚠️ Notes
