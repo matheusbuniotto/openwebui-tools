@@ -10,7 +10,6 @@ from typing import Optional, Callable, Awaitable
 from pydantic import BaseModel, Field
 import requests
 import time
-import json
 
 
 class Tools:
@@ -18,6 +17,7 @@ class Tools:
     This module defines a Tools class that utilizes N8N for an Agent.
     Based on the original work by Cole Medin.
     """
+
     class Valves(BaseModel):
         n8n_url: str = Field(default="http://n8n-ui:5678/webhook/invoke-n8n-agent")
         n8n_bearer_token: str = Field(default="")
@@ -83,7 +83,9 @@ class Tools:
         body = {"messages": [{"role": "user", "content": input_text}]}
 
         # Emit initial status
-        await self.emit_status(__event_emitter__, "info", "Executing N8N Workflow...", False)
+        await self.emit_status(
+            __event_emitter__, "info", "Executing N8N Workflow...", False
+        )
 
         # Verify input is available
         if not input_text:

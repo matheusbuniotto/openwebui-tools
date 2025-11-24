@@ -15,9 +15,10 @@ from typing import Callable, Any
 class Tools:
     """
     This tool connects to a Google Apps Script Web App to create Google Docs based on a template.
-    It replaces placeholders in the template with provided values. For this to work, you need to 
+    It replaces placeholders in the template with provided values. For this to work, you need to
     add a App script into you google docs file.
     """
+
     class Valves(BaseModel):
         # Here you should pastes the link copied from Google Apps Script
         DOCS_WEBHOOK_URL: str = Field(
@@ -76,7 +77,9 @@ class Tools:
             return f"Success! The document was created.\n\n**Name:** {filename}\n**Access here:** [Open Document]({doc_url})"
 
         except Exception as e:
-            await self._emit_status(__event_emitter__, "error", f"Error: {str(e)}", True)
+            await self._emit_status(
+                __event_emitter__, "error", f"Error: {str(e)}", True
+            )
             return f"Failed to create document: {str(e)}"
 
     async def _emit_status(self, handler, status_id, description, done):

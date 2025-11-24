@@ -6,9 +6,7 @@ version: 0.0.1
 license: MIT
 """
 
-import os
 import requests
-import json
 from pydantic import BaseModel, Field
 from typing import Callable, Any
 
@@ -18,11 +16,10 @@ class Tools:
     This tool allows you to perform RAG (Retrieval-Augmented Generation) using Pinecone as a vector database.
     It converts the user's query into a vector using OpenAI's embedding model and searches for relevant documents in the specified Pinecone index.
     """
+
     class Valves(BaseModel):
         # Manual Configurations (Valves) - Copy and paste your keys here via the panel
-        PINECONE_API_KEY: str = Field(
-            default="", description="Your Pinecone API Key."
-        )
+        PINECONE_API_KEY: str = Field(default="", description="Your Pinecone API Key.")
         PINECONE_INDEX_NAME: str = Field(
             default="", description="The name of your Pinecone Index."
         )
@@ -57,9 +54,7 @@ class Tools:
                 return "Error: Pinecone settings are missing. Check the tool Valves."
 
             if not self.valves.OPENAI_API_KEY:
-                return (
-                    "Error: OpenAI key is missing. Check the tool Valves."
-                )
+                return "Error: OpenAI key is missing. Check the tool Valves."
 
             # 2. Host Discovery
             # Fetches the real database address if we don't have it cached yet
