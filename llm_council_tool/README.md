@@ -28,6 +28,8 @@ Configure the tool in **OpenWebUI > Workspace > Tools > Valves**:
 | :--- | :--- | :--- |
 | **openwebui_base_url** | Base URL for OpenWebUI API. Leave empty to auto-detect. | `""` (auto) |
 | **openwebui_api_key** | API Key. Leave empty to use session token or env var. | `""` (auto) |
+| **fallback_api_key** | Fallback API key for OpenAI/OpenRouter when OpenWebUI unavailable. | `""` (uses `OPENAI_API_KEY` env) |
+| **fallback_base_url** | Fallback API URL. Change to OpenRouter if needed. | `https://api.openai.com/v1` |
 | **council_models** | Comma-separated model IDs or `all` for all available models. | `openai/gpt-4.1,openai/gpt-4o-mini,google/gemini-2.5-flash` |
 | **chairperson_model** | Model ID for the chairperson. Empty uses first council model. | `""` |
 | **max_models** | Maximum models when using `all`. Prevents runaway costs. | `5` |
@@ -75,9 +77,14 @@ To modify prompts or council behavior, edit these sections in `llm_council.py`:
 The tool resolves API credentials in this order:
 1. **Session token** from `__user__` (automatic inside OpenWebUI)
 2. **Environment variable** `OPENWEBUI_API_KEY`
-3. **Valve configuration** (manual fallback)
+3. **Valve configuration** `openwebui_api_key`
+4. **Fallback to OpenAI/OpenRouter** using `OPENAI_API_KEY` or `OPENROUTER_API_KEY` env vars
 
 For most users inside OpenWebUI, **no configuration is needed**.
+
+### Using with OpenRouter
+
+Set `fallback_base_url` to `https://openrouter.ai/api/v1` and configure `fallback_api_key` or set `OPENROUTER_API_KEY` env var.
 
 ---
 

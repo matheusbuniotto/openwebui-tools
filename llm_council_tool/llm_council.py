@@ -2,7 +2,7 @@
 title: LLM Council Tool
 author: matheusbuniotto
 funding_url: https://github.com/matheusbuniotto/openwebui-tools
-version: 0.2.1
+version: 0.3.0
 license: MIT
 """
 
@@ -27,6 +27,14 @@ class Tools:
             default="",
             description="API Key for OpenWebUI. Leave empty to auto-detect from session or OPENWEBUI_API_KEY env var.",
         )
+        fallback_api_key: str = Field(
+            default="",
+            description="Fallback API key for OpenAI/OpenRouter when OpenWebUI is unavailable. Uses OPENAI_API_KEY env var if empty.",
+        )
+        fallback_base_url: str = Field(
+            default="https://api.openai.com/v1",
+            description="Fallback API base URL. Use 'https://openrouter.ai/api/v1' for OpenRouter.",
+        )
         council_models: str = Field(
             default=DEFAULT_COUNCIL_MODELS,
             description="Comma-separated model IDs (e.g., 'llama3:latest,gpt-4o') or 'all' to use all available models (limited by max_models).",
@@ -47,6 +55,7 @@ class Tools:
         self.valves = self.Valves()
         self._resolved_api_key: Optional[str] = None
         self._resolved_base_url: Optional[str] = None
+        self._using_fallback: bool = False
 
     def _resolve_api_key(self, __user__: Optional[dict] = None) -> Optional[str]:
         """
@@ -55,21 +64,32 @@ class Tools:
         2. OPENWEBUI_API_KEY environment variable
         3. Valve configuration
         """
-        # Try __user__ token first (OpenWebUI passes this)
         if __user__:
-            # Check common token locations in __user__ dict
             token = __user__.get("token") or __user__.get("api_key")
             if token:
                 return token
 
-        # Try environment variable
         env_key = os.environ.get("OPENWEBUI_API_KEY")
         if env_key:
             return env_key
 
-        # Fall back to Valve configuration
         if self.valves.openwebui_api_key:
             return self.valves.openwebui_api_key
+
+        return None
+
+    def _resolve_fallback_api_key(self) -> Optional[str]:
+        """
+        Resolves fallback API key for OpenAI/OpenRouter.
+        """
+        if self.valves.fallback_api_key:
+            return self.valves.fallback_api_key
+
+        # Try common environment variables
+        for env_var in ["OPENAI_API_KEY", "OPENROUTER_API_KEY"]:
+            key = os.environ.get(env_var)
+            if key:
+                return key
 
         return None
 
@@ -80,16 +100,13 @@ class Tools:
         2. OPENWEBUI_BASE_URL environment variable
         3. Auto-detect (localhost first, then Docker internal)
         """
-        # Use Valve if explicitly set
         if self.valves.openwebui_base_url:
             return self.valves.openwebui_base_url
 
-        # Try environment variable
         env_url = os.environ.get("OPENWEBUI_BASE_URL")
         if env_url:
             return env_url
 
-        # Auto-detect: try localhost first (most common for local dev)
         localhost_url = "http://localhost:3000/api"
         docker_url = "http://host.docker.internal:3000/api"
 
@@ -100,8 +117,17 @@ class Tools:
         except Exception:
             pass
 
-        # Default to Docker internal URL
         return docker_url
+
+    def _try_fallback(self) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Attempts to use fallback API (OpenAI/OpenRouter).
+        Returns (api_key, base_url) or (None, None) if unavailable.
+        """
+        fallback_key = self._resolve_fallback_api_key()
+        if fallback_key:
+            return fallback_key, self.valves.fallback_base_url
+        return None, None
 
     async def _emit_status(
         self,
@@ -225,18 +251,32 @@ class Tools:
         2. Council ranks peer responses.
         3. Chairperson synthesizes the final answer.
         """
-        # Resolve API key and base URL
+        # Resolve API key and base URL (try OpenWebUI first, then fallback)
         api_key = self._resolve_api_key(__user__)
         base_url = self._resolve_base_url()
+        self._using_fallback = False
 
         if not api_key:
-            await self._emit_status(
-                __event_emitter__,
-                "error",
-                "API Key not found. Set OPENWEBUI_API_KEY env var or configure in Valves.",
-                True,
-            )
-            return "Error: API Key not found. Please set OPENWEBUI_API_KEY environment variable or configure 'openwebui_api_key' in tool settings."
+            # Try fallback to OpenAI/OpenRouter
+            fallback_key, fallback_url = self._try_fallback()
+            if fallback_key:
+                api_key = fallback_key
+                base_url = fallback_url
+                self._using_fallback = True
+                await self._emit_status(
+                    __event_emitter__,
+                    "info",
+                    f"Using fallback API: {fallback_url}",
+                    False,
+                )
+            else:
+                await self._emit_status(
+                    __event_emitter__,
+                    "error",
+                    "No API Key found. Set OPENWEBUI_API_KEY or OPENAI_API_KEY env var.",
+                    True,
+                )
+                return "Error: No API Key found. Please set OPENWEBUI_API_KEY, OPENAI_API_KEY, or configure in Valves."
 
         # 1. Fetch available models
         available_models = await asyncio.get_running_loop().run_in_executor(

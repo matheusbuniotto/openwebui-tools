@@ -2,7 +2,7 @@
 title: Conselho de LLMs
 author: matheusbuniotto
 funding_url: https://github.com/matheusbuniotto/openwebui-tools
-version: 0.2.1
+version: 0.3.0
 license: MIT
 """
 
@@ -27,6 +27,14 @@ class Tools:
             default="",
             description="Chave de API do OpenWebUI. Deixe vazio para auto-detectar da sessao ou variavel OPENWEBUI_API_KEY.",
         )
+        fallback_api_key: str = Field(
+            default="",
+            description="Chave de API alternativa para OpenAI/OpenRouter quando OpenWebUI nao esta disponivel. Usa OPENAI_API_KEY se vazio.",
+        )
+        fallback_base_url: str = Field(
+            default="https://api.openai.com/v1",
+            description="URL base alternativa. Use 'https://openrouter.ai/api/v1' para OpenRouter.",
+        )
         council_models: str = Field(
             default=MODELOS_PADRAO,
             description="IDs dos modelos separados por virgula (ex: 'llama3:latest,gpt-4o') ou 'all' para usar todos os modelos disponiveis (limitado por max_models).",
@@ -47,6 +55,7 @@ class Tools:
         self.valves = self.Valves()
         self._resolved_api_key: Optional[str] = None
         self._resolved_base_url: Optional[str] = None
+        self._using_fallback: bool = False
 
     def _resolve_api_key(self, __user__: Optional[dict] = None) -> Optional[str]:
         """
@@ -66,6 +75,20 @@ class Tools:
 
         if self.valves.openwebui_api_key:
             return self.valves.openwebui_api_key
+
+        return None
+
+    def _resolve_fallback_api_key(self) -> Optional[str]:
+        """
+        Resolve a chave de API alternativa para OpenAI/OpenRouter.
+        """
+        if self.valves.fallback_api_key:
+            return self.valves.fallback_api_key
+
+        for env_var in ["OPENAI_API_KEY", "OPENROUTER_API_KEY"]:
+            key = os.environ.get(env_var)
+            if key:
+                return key
 
         return None
 
@@ -94,6 +117,16 @@ class Tools:
             pass
 
         return docker_url
+
+    def _try_fallback(self) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Tenta usar a API alternativa (OpenAI/OpenRouter).
+        Retorna (api_key, base_url) ou (None, None) se indisponivel.
+        """
+        fallback_key = self._resolve_fallback_api_key()
+        if fallback_key:
+            return fallback_key, self.valves.fallback_base_url
+        return None, None
 
     async def _emit_status(
         self,
@@ -212,17 +245,32 @@ class Tools:
         2. Conselho classifica as respostas dos pares.
         3. Presidente sintetiza a resposta final.
         """
+        # Resolve chave de API e URL base (tenta OpenWebUI primeiro, depois fallback)
         api_key = self._resolve_api_key(__user__)
         base_url = self._resolve_base_url()
+        self._using_fallback = False
 
         if not api_key:
-            await self._emit_status(
-                __event_emitter__,
-                "error",
-                "Chave de API nao encontrada. Defina OPENWEBUI_API_KEY ou configure nos Valves.",
-                True,
-            )
-            return "Erro: Chave de API nao encontrada. Defina a variavel de ambiente OPENWEBUI_API_KEY ou configure 'openwebui_api_key' nas configuracoes da ferramenta."
+            # Tenta fallback para OpenAI/OpenRouter
+            fallback_key, fallback_url = self._try_fallback()
+            if fallback_key:
+                api_key = fallback_key
+                base_url = fallback_url
+                self._using_fallback = True
+                await self._emit_status(
+                    __event_emitter__,
+                    "info",
+                    f"Usando API alternativa: {fallback_url}",
+                    False,
+                )
+            else:
+                await self._emit_status(
+                    __event_emitter__,
+                    "error",
+                    "Chave de API nao encontrada. Defina OPENWEBUI_API_KEY ou OPENAI_API_KEY.",
+                    True,
+                )
+                return "Erro: Chave de API nao encontrada. Defina OPENWEBUI_API_KEY, OPENAI_API_KEY, ou configure nos Valves."
 
         available_models = await asyncio.get_running_loop().run_in_executor(
             None, self._get_available_models, api_key, base_url
