@@ -1,5 +1,5 @@
 """
-title: LLM Council Tool
+title: Conselho de LLMs
 author: matheusbuniotto
 funding_url: https://github.com/matheusbuniotto/openwebui-tools
 version: 0.2.1
@@ -14,33 +14,33 @@ from pydantic import BaseModel, Field
 import requests
 
 
-DEFAULT_COUNCIL_MODELS = "openai/gpt-4.1,openai/gpt-4o-mini,google/gemini-2.5-flash"
+MODELOS_PADRAO = "openai/gpt-4.1,openai/gpt-4o-mini,google/gemini-2.5-flash"
 
 
 class Tools:
     class Valves(BaseModel):
         openwebui_base_url: str = Field(
             default="",
-            description="Base URL for OpenWebUI API. Leave empty to auto-detect (tries localhost:3000, then host.docker.internal:3000).",
+            description="URL base da API do OpenWebUI. Deixe vazio para auto-detectar (tenta localhost:3000, depois host.docker.internal:3000).",
         )
         openwebui_api_key: str = Field(
             default="",
-            description="API Key for OpenWebUI. Leave empty to auto-detect from session or OPENWEBUI_API_KEY env var.",
+            description="Chave de API do OpenWebUI. Deixe vazio para auto-detectar da sessao ou variavel OPENWEBUI_API_KEY.",
         )
         council_models: str = Field(
-            default=DEFAULT_COUNCIL_MODELS,
-            description="Comma-separated model IDs (e.g., 'llama3:latest,gpt-4o') or 'all' to use all available models (limited by max_models).",
+            default=MODELOS_PADRAO,
+            description="IDs dos modelos separados por virgula (ex: 'llama3:latest,gpt-4o') ou 'all' para usar todos os modelos disponiveis (limitado por max_models).",
         )
         chairperson_model: str = Field(
             default="",
-            description="Model ID for the Chairperson who synthesizes the final answer. If empty, uses the first council model.",
+            description="ID do modelo Presidente que sintetiza a resposta final. Se vazio, usa o primeiro modelo do conselho.",
         )
         max_models: int = Field(
             default=5,
-            description="Maximum number of models when using 'all'. Prevents runaway costs.",
+            description="Numero maximo de modelos ao usar 'all'. Previne custos excessivos.",
         )
         timeout: int = Field(
-            default=60, description="Timeout in seconds for model requests."
+            default=60, description="Timeout em segundos para requisicoes aos modelos."
         )
 
     def __init__(self):
@@ -50,24 +50,20 @@ class Tools:
 
     def _resolve_api_key(self, __user__: Optional[dict] = None) -> Optional[str]:
         """
-        Resolves API key in order of priority:
-        1. __user__ dict token (passed by OpenWebUI)
-        2. OPENWEBUI_API_KEY environment variable
-        3. Valve configuration
+        Resolve a chave de API na ordem de prioridade:
+        1. Token do dict __user__ (passado pelo OpenWebUI)
+        2. Variavel de ambiente OPENWEBUI_API_KEY
+        3. Configuracao do Valve
         """
-        # Try __user__ token first (OpenWebUI passes this)
         if __user__:
-            # Check common token locations in __user__ dict
             token = __user__.get("token") or __user__.get("api_key")
             if token:
                 return token
 
-        # Try environment variable
         env_key = os.environ.get("OPENWEBUI_API_KEY")
         if env_key:
             return env_key
 
-        # Fall back to Valve configuration
         if self.valves.openwebui_api_key:
             return self.valves.openwebui_api_key
 
@@ -75,21 +71,18 @@ class Tools:
 
     def _resolve_base_url(self) -> str:
         """
-        Resolves base URL in order of priority:
-        1. Valve configuration (if set)
-        2. OPENWEBUI_BASE_URL environment variable
-        3. Auto-detect (localhost first, then Docker internal)
+        Resolve a URL base na ordem de prioridade:
+        1. Configuracao do Valve (se definida)
+        2. Variavel de ambiente OPENWEBUI_BASE_URL
+        3. Auto-detectar (localhost primeiro, depois Docker interno)
         """
-        # Use Valve if explicitly set
         if self.valves.openwebui_base_url:
             return self.valves.openwebui_base_url
 
-        # Try environment variable
         env_url = os.environ.get("OPENWEBUI_BASE_URL")
         if env_url:
             return env_url
 
-        # Auto-detect: try localhost first (most common for local dev)
         localhost_url = "http://localhost:3000/api"
         docker_url = "http://host.docker.internal:3000/api"
 
@@ -100,7 +93,6 @@ class Tools:
         except Exception:
             pass
 
-        # Default to Docker internal URL
         return docker_url
 
     async def _emit_status(
@@ -111,7 +103,7 @@ class Tools:
         done: bool,
     ):
         """
-        Emits status updates to the OpenWebUI interface.
+        Emite atualizacoes de status para a interface do OpenWebUI.
         """
         if event_emitter:
             await event_emitter(
@@ -130,7 +122,7 @@ class Tools:
         self, model: str, messages: List[Dict[str, Any]], api_key: str, base_url: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Synchronous helper to query a single model via OpenWebUI API.
+        Helper sincrono para consultar um modelo via API do OpenWebUI.
         """
         url = f"{base_url}/chat/completions"
         headers = {
@@ -150,17 +142,16 @@ class Tools:
             data = response.json()
             return data["choices"][0]["message"]
         except Exception as e:
-            print(f"Error querying model {model}: {e}")
+            print(f"Erro ao consultar modelo {model}: {e}")
             return {"error": str(e)}
 
     async def _query_model_async(
         self, model: str, messages: List[Dict[str, Any]], api_key: str, base_url: str
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
         """
-        Async wrapper for querying a model.
+        Wrapper assincrono para consultar um modelo.
         """
         loop = asyncio.get_running_loop()
-        # Run synchronous request in a separate thread to avoid blocking the event loop
         result = await loop.run_in_executor(
             None, self._query_model_sync, model, messages, api_key, base_url
         )
@@ -168,34 +159,31 @@ class Tools:
 
     def _parse_ranking_from_text(self, ranking_text: str) -> List[str]:
         """
-        Extracts the ranking list from the model's text response.
-        Looks for 'FINAL RANKING:' followed by '1. Response X'.
+        Extrai a lista de ranking da resposta de texto do modelo.
+        Procura por 'RANKING FINAL:' seguido de '1. Resposta X'.
         """
-        if "FINAL RANKING:" in ranking_text:
-            parts = ranking_text.split("FINAL RANKING:")
+        if "RANKING FINAL:" in ranking_text:
+            parts = ranking_text.split("RANKING FINAL:")
             if len(parts) >= 2:
                 ranking_section = parts[1]
-                # Match "1. Response A" or "1. Response A"
                 numbered_matches = re.findall(
-                    r"\d+\.\s*Response [A-Z]", ranking_section
+                    r"\d+\.\s*Resposta [A-Z]", ranking_section
                 )
                 if numbered_matches:
                     return [
-                        re.search(r"Response [A-Z]", m).group()
+                        re.search(r"Resposta [A-Z]", m).group()
                         for m in numbered_matches
                     ]
 
-                # Fallback: just find Response X in order
-                matches = re.findall(r"Response [A-Z]", ranking_section)
+                matches = re.findall(r"Resposta [A-Z]", ranking_section)
                 return matches
 
-        # Global fallback
-        matches = re.findall(r"Response [A-Z]", ranking_text)
+        matches = re.findall(r"Resposta [A-Z]", ranking_text)
         return matches
 
     def _get_available_models(self, api_key: str, base_url: str) -> List[str]:
         """
-        Fetches the list of available model IDs from the OpenWebUI API.
+        Busca a lista de IDs de modelos disponiveis da API do OpenWebUI.
         """
         url = f"{base_url}/models"
         headers = {
@@ -207,25 +195,23 @@ class Tools:
             response = requests.get(url, headers=headers, timeout=self.valves.timeout)
             response.raise_for_status()
             data = response.json()
-            # OpenWebUI /api/models format: {"data": [{"id": "model_id", ...}, ...]}
             return [model["id"] for model in data.get("data", [])]
         except Exception as e:
-            print(f"Error fetching available models: {e}")
+            print(f"Erro ao buscar modelos disponiveis: {e}")
             return []
 
-    async def consult_council(
+    async def consultar_conselho(
         self,
-        topic: str,
+        topico: str,
         __user__: Optional[dict] = None,
         __event_emitter__: Any = None,
     ) -> str:
         """
-        Orchestrates a 3-stage council meeting:
-        1. Council provides individual responses.
-        2. Council ranks peer responses.
-        3. Chairperson synthesizes the final answer.
+        Orquestra uma reuniao de conselho em 3 etapas:
+        1. Conselho fornece respostas individuais.
+        2. Conselho classifica as respostas dos pares.
+        3. Presidente sintetiza a resposta final.
         """
-        # Resolve API key and base URL
         api_key = self._resolve_api_key(__user__)
         base_url = self._resolve_base_url()
 
@@ -233,17 +219,15 @@ class Tools:
             await self._emit_status(
                 __event_emitter__,
                 "error",
-                "API Key not found. Set OPENWEBUI_API_KEY env var or configure in Valves.",
+                "Chave de API nao encontrada. Defina OPENWEBUI_API_KEY ou configure nos Valves.",
                 True,
             )
-            return "Error: API Key not found. Please set OPENWEBUI_API_KEY environment variable or configure 'openwebui_api_key' in tool settings."
+            return "Erro: Chave de API nao encontrada. Defina a variavel de ambiente OPENWEBUI_API_KEY ou configure 'openwebui_api_key' nas configuracoes da ferramenta."
 
-        # 1. Fetch available models
         available_models = await asyncio.get_running_loop().run_in_executor(
             None, self._get_available_models, api_key, base_url
         )
 
-        # 2. Determine target models
         configured_models_raw = self.valves.council_models.lower().strip()
 
         target_models = []
@@ -254,18 +238,17 @@ class Tools:
                     await self._emit_status(
                         __event_emitter__,
                         "info",
-                        f"Limiting council to {self.valves.max_models} models (of {len(available_models)} available).",
+                        f"Limitando conselho a {self.valves.max_models} modelos (de {len(available_models)} disponiveis).",
                         False,
                     )
             else:
-                return "Error: 'council_models' set to 'all', but could not fetch available models from API."
+                return "Erro: 'council_models' definido como 'all', mas nao foi possivel buscar modelos disponiveis da API."
         else:
             requested_models = [
                 m.strip() for m in self.valves.council_models.split(",") if m.strip()
             ]
 
             if available_models:
-                # Validation logic
                 missing_models = []
                 for m in requested_models:
                     if m in available_models:
@@ -274,19 +257,18 @@ class Tools:
                         missing_models.append(m)
 
                 if missing_models:
-                    warning_msg = f"Warning: The following models were not found and will be skipped: {', '.join(missing_models)}"
+                    warning_msg = f"Aviso: Os seguintes modelos nao foram encontrados e serao ignorados: {', '.join(missing_models)}"
                     await self._emit_status(
                         __event_emitter__, "info", warning_msg, False
                     )
 
                 if not target_models:
-                    return f"Error: None of the requested models ({', '.join(requested_models)}) are available."
+                    return f"Erro: Nenhum dos modelos solicitados ({', '.join(requested_models)}) esta disponivel."
             else:
-                # Could not fetch available models (API error?), so we trust the user's list
                 await self._emit_status(
                     __event_emitter__,
                     "info",
-                    "Could not verify models with API, proceeding with configured list.",
+                    "Nao foi possivel verificar modelos com a API, prosseguindo com a lista configurada.",
                     False,
                 )
                 target_models = requested_models
@@ -294,37 +276,34 @@ class Tools:
         council_models_list = target_models
 
         if not council_models_list:
-            return "Error: No council models configured or found."
+            return "Erro: Nenhum modelo do conselho configurado ou encontrado."
 
-        # check for chairperson
         chairperson = self.valves.chairperson_model
         if not chairperson:
             chairperson = council_models_list[0]
 
-        # Validate chairperson if we have list
         if available_models and chairperson not in available_models:
             await self._emit_status(
                 __event_emitter__,
                 "info",
-                f"Warning: Chairperson model '{chairperson}' not found in available models. Trying anyway...",
+                f"Aviso: Modelo presidente '{chairperson}' nao encontrado nos modelos disponiveis. Tentando mesmo assim...",
                 False,
             )
 
-        # --- Stage 1: Collect Responses ---
+        # --- Etapa 1: Coletar Respostas ---
         await self._emit_status(
             __event_emitter__,
             "info",
-            f"Stage 1: Consulting {len(council_models_list)} council members: {', '.join(council_models_list)}",
+            f"Etapa 1: Consultando {len(council_models_list)} membros do conselho: {', '.join(council_models_list)}",
             False,
         )
 
-        stage1_messages = [{"role": "user", "content": topic}]
+        stage1_messages = [{"role": "user", "content": topico}]
         tasks = [
             self._query_model_async(model, stage1_messages, api_key, base_url)
             for model in council_models_list
         ]
 
-        # Run all requests in parallel
         stage1_results_raw = await asyncio.gather(*tasks)
 
         valid_responses = []
@@ -338,57 +317,54 @@ class Tools:
                 errors.append(f"{model}: {response['error']}")
 
         if not valid_responses:
-            error_details = "; ".join(errors) if errors else "Unknown error"
-            error_msg = f"All council models failed. Errors: {error_details}"
+            error_details = "; ".join(errors) if errors else "Erro desconhecido"
+            error_msg = f"Todos os modelos do conselho falharam. Erros: {error_details}"
             await self._emit_status(
-                __event_emitter__, "error", f"Failed: {error_details[:100]}...", True
+                __event_emitter__, "error", f"Falha: {error_details[:100]}...", True
             )
-            return f"Error: Please check your OpenWebUI Base URL and API Key. Details: {error_msg}"
+            return f"Erro: Verifique sua URL base e chave de API do OpenWebUI. Detalhes: {error_msg}"
 
-        # --- Stage 2: Peer Ranking ---
+        # --- Etapa 2: Avaliacao entre Pares ---
         await self._emit_status(
             __event_emitter__,
             "info",
-            "Stage 2: Council is reviewing peer responses...",
+            "Etapa 2: Conselho esta avaliando as respostas dos colegas...",
             False,
         )
 
-        # Anonymize responses with labels A, B, C...
         labels = [chr(65 + i) for i in range(len(valid_responses))]
 
-        # Prepare ranking prompt
         responses_text = "\n\n".join(
             [
-                f"Response {label}:\n{r['response']}"
+                f"Resposta {label}:\n{r['response']}"
                 for label, r in zip(labels, valid_responses)
             ]
         )
 
-        ranking_prompt = f"""You are evaluating different responses to the following question:
+        ranking_prompt = f"""Voce esta avaliando diferentes respostas para a seguinte pergunta:
 
-Question: {topic}
+Pergunta: {topico}
 
-Here are the responses from different models (anonymized):
+Aqui estao as respostas de diferentes modelos (anonimizadas):
 
 {responses_text}
 
-Your task:
-1. Evaluate each response individually (strengths/weaknesses).
-2. Provide a final ranking.
+Sua tarefa:
+1. Avaliar cada resposta individualmente (pontos fortes/fracos).
+2. Fornecer um ranking final.
 
-IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
+IMPORTANTE: Seu ranking final DEVE ser formatado EXATAMENTE assim:
+- Comece com a linha "RANKING FINAL:" (tudo em maiusculas, com dois pontos)
+- Depois liste as respostas da melhor para a pior como uma lista numerada
+- Cada linha deve ser: numero, ponto, espaco, depois APENAS o rotulo da resposta (ex: "1. Resposta A")
 
-FINAL RANKING:
-1. Response [Label]
-2. Response [Label]
+RANKING FINAL:
+1. Resposta [Rotulo]
+2. Resposta [Rotulo]
 ...
 """
         ranking_messages = [{"role": "user", "content": ranking_prompt}]
 
-        # Ask council members to rank
         ranking_tasks = [
             self._query_model_async(model, ranking_messages, api_key, base_url)
             for model in council_models_list
@@ -404,38 +380,40 @@ FINAL RANKING:
                     {"model": model, "full_text": content, "parsed": parsed}
                 )
 
-        # --- Stage 3: Synthesis ---
+        # --- Etapa 3: Sintese ---
         await self._emit_status(
             __event_emitter__,
             "info",
-            "Stage 3: Chairperson is synthesizing the result...",
+            "Etapa 3: Presidente esta sintetizando o resultado...",
             False,
         )
 
-        # Build context for Chairman
         stage1_summary = "\n\n".join(
-            [f"Model: {r['model']}\nResponse: {r['response']}" for r in valid_responses]
+            [
+                f"Modelo: {r['model']}\nResposta: {r['response']}"
+                for r in valid_responses
+            ]
         )
 
         stage2_summary = "\n\n".join(
             [
-                f"Model: {r['model']}\nRanking: {r.get('parsed', 'No valid ranking found')}"
+                f"Modelo: {r['model']}\nRanking: {r.get('parsed', 'Nenhum ranking valido encontrado')}"
                 for r in rankings
             ]
         )
 
-        chairman_prompt = f"""You are the Chairperson of an LLM Council.
-        
-Original Question: {topic}
+        chairman_prompt = f"""Voce e o Presidente de um Conselho de LLMs.
 
-STAGE 1 - Individual Responses:
+Pergunta Original: {topico}
+
+ETAPA 1 - Respostas Individuais:
 {stage1_summary}
 
-STAGE 2 - Peer Rankings:
+ETAPA 2 - Rankings dos Pares:
 {stage2_summary}
 
-Your task as Chairman is to synthesize a single, comprehensive answer.
-Consider the insights from Stage 1 and the consensus (or disagreement) from Stage 2.
+Sua tarefa como Presidente e sintetizar uma unica resposta abrangente.
+Considere os insights da Etapa 1 e o consenso (ou discordancia) da Etapa 2.
 """
         chairman_messages = [{"role": "user", "content": chairman_prompt}]
 
@@ -444,41 +422,34 @@ Consider the insights from Stage 1 and the consensus (or disagreement) from Stag
         )
 
         await self._emit_status(
-            __event_emitter__, "info", "Council meeting adjourned.", True
+            __event_emitter__, "info", "Reuniao do conselho encerrada.", True
         )
 
-        # --- Construct Detailed Report ---
+        # --- Construir Relatorio Detalhado ---
 
-        report_parts = ["# 🏛️ LLM Council Report\n"]
+        report_parts = ["# Relatorio do Conselho de LLMs\n"]
 
-        # Stage 1 Output
-        report_parts.append("## Stage 1: Individual Perspectives")
+        report_parts.append("## Etapa 1: Perspectivas Individuais")
         for r in valid_responses:
             report_parts.append(f"### {r['model']}\n{r['response']}\n")
 
-        # Stage 2 Output
-        report_parts.append("\n## Stage 2: Peer Evaluation & Ranking")
+        report_parts.append("\n## Etapa 2: Avaliacao e Ranking entre Pares")
         for r in rankings:
-            report_parts.append(f"### {r['model']}'s Ranking\n{r['full_text']}\n")
+            report_parts.append(f"### Ranking de {r['model']}\n{r['full_text']}\n")
 
-        # Stage 3 Output
         if final_response:
-            # Use the final_response content obtained from the Chairperson
-            final_synthesis = final_response.get("content", "Error: No content.")
+            final_synthesis = final_response.get("content", "Erro: Sem conteudo.")
             report_parts.append(
-                f"\n## Stage 3: Chairperson Synthesis ({chairperson})\n{final_synthesis}"
+                f"\n## Etapa 3: Sintese do Presidente ({chairperson})\n{final_synthesis}"
             )
         else:
-            final_synthesis = (
-                "Error: Chairperson failed to synthesize the final response."
-            )
+            final_synthesis = "Erro: Presidente falhou ao sintetizar a resposta final."
             report_parts.append(
-                f"\n## Stage 3: Chairperson Synthesis\n{final_synthesis}"
+                f"\n## Etapa 3: Sintese do Presidente\n{final_synthesis}"
             )
 
         full_report = "\n".join(report_parts)
 
-        # Emit the report directly to the chat to ensure raw visibility
         if __event_emitter__:
             await __event_emitter__(
                 {
@@ -487,5 +458,4 @@ Consider the insights from Stage 1 and the consensus (or disagreement) from Stag
                 }
             )
 
-        # Return the report as well (for history/context) but the emitter ensures direct display.
         return full_report

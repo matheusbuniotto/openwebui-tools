@@ -7,6 +7,8 @@
 
 This tool orchestrates a "council" of multiple LLMs to answer questions through a 3-stage deliberation process: individual responses, peer ranking, and chairperson synthesis.
 
+> *Heavily inspired by [Andrej Karpathy's llm-council](https://github.com/karpathy/llm-council).*
+
 ---
 
 ## Features
@@ -26,8 +28,9 @@ Configure the tool in **OpenWebUI > Workspace > Tools > Valves**:
 | :--- | :--- | :--- |
 | **openwebui_base_url** | Base URL for OpenWebUI API. Leave empty to auto-detect. | `""` (auto) |
 | **openwebui_api_key** | API Key. Leave empty to use session token or env var. | `""` (auto) |
-| **council_models** | Comma-separated model IDs or `all` for all available models. | `all` |
+| **council_models** | Comma-separated model IDs or `all` for all available models. | `openai/gpt-4.1,openai/gpt-4o-mini,google/gemini-2.5-flash` |
 | **chairperson_model** | Model ID for the chairperson. Empty uses first council model. | `""` |
+| **max_models** | Maximum models when using `all`. Prevents runaway costs. | `5` |
 | **timeout** | Timeout in seconds for model requests. | `60` |
 
 ---
