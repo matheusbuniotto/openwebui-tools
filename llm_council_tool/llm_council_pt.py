@@ -9,7 +9,7 @@ license: MIT
 import os
 import asyncio
 import re
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Union
 from pydantic import BaseModel, Field
 import requests
 
@@ -190,6 +190,41 @@ class Tools:
         )
         return model, result
 
+    def _normalize_topic_to_content(
+        self, topic: Union[str, List[Dict[str, Any]]]
+    ) -> Union[str, List[Dict[str, Any]]]:
+        """
+        Normaliza o topico (string ou conteudo multimodal do OpenWebUI) para o content da mensagem da API.
+        Retorna o content como esta para a API: str ou lista de partes (texto + image_url).
+        """
+        if isinstance(topic, str):
+            return topic
+        if isinstance(topic, list):
+            return topic if topic else ""
+        return str(topic) if topic is not None else ""
+
+    def _topic_to_text(self, topic: Union[str, List[Dict[str, Any]]]) -> str:
+        """
+        Extrai representacao em texto puro do topico para uso em prompts (ranking, presidente).
+        Aceita string e conteudo multimodal (texto + imagens).
+        """
+        if topic is None:
+            return ""
+        if isinstance(topic, str):
+            return topic
+        if not isinstance(topic, list):
+            return str(topic)
+        parts = []
+        for item in topic:
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("type")
+            if kind == "text":
+                parts.append(item.get("text", ""))
+            elif kind == "image_url":
+                parts.append("[Imagem anexada]")
+        return " ".join(parts).strip() or "[Sem conteudo de texto]"
+
     def _parse_ranking_from_text(self, ranking_text: str) -> List[str]:
         """
         Extrai a lista de ranking da resposta de texto do modelo.
@@ -235,7 +270,7 @@ class Tools:
 
     async def consultar_conselho(
         self,
-        topico: str,
+        topico: Union[str, List[Dict[str, Any]]],
         __user__: Optional[dict] = None,
         __event_emitter__: Any = None,
     ) -> str:
@@ -244,7 +279,14 @@ class Tools:
         1. Conselho fornece respostas individuais.
         2. Conselho classifica as respostas dos pares.
         3. Presidente sintetiza a resposta final.
+
+        topico: Entrada do usuario como texto (str) ou conteudo multimodal do OpenWebUI
+                (lista de partes com "type": "text" e/ou "type": "image_url"). Suporta imagens.
         """
+        # Normaliza topico para API (preserva imagens) e para prompts so texto
+        user_content = self._normalize_topic_to_content(topico)
+        topic_text = self._topic_to_text(topico)
+
         # Resolve chave de API e URL base (tenta OpenWebUI primeiro, depois fallback)
         api_key = self._resolve_api_key(__user__)
         base_url = self._resolve_base_url()
@@ -346,7 +388,7 @@ class Tools:
             False,
         )
 
-        stage1_messages = [{"role": "user", "content": topico}]
+        stage1_messages = [{"role": "user", "content": user_content}]
         tasks = [
             self._query_model_async(model, stage1_messages, api_key, base_url)
             for model in council_models_list
@@ -391,7 +433,7 @@ class Tools:
 
         ranking_prompt = f"""Voce esta avaliando diferentes respostas para a seguinte pergunta:
 
-Pergunta: {topico}
+Pergunta: {topic_text}
 
 Aqui estao as respostas de diferentes modelos (anonimizadas):
 
@@ -452,7 +494,7 @@ RANKING FINAL:
 
         chairman_prompt = f"""Voce e o Presidente de um Conselho de LLMs.
 
-Pergunta Original: {topico}
+Pergunta Original: {topic_text}
 
 ETAPA 1 - Respostas Individuais:
 {stage1_summary}
