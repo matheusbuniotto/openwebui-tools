@@ -11,6 +11,21 @@ This tool orchestrates a "council" of multiple LLMs to answer questions through 
 
 ---
 
+## Changelog
+
+### v0.4.1
+- **Fix**: Model matching is now case-insensitive — model IDs with mixed casing no longer get silently skipped.
+- **Fix**: Stage 2 peer ranking is skipped when only one council member responds, avoiding wasted API calls and nonsense output.
+- **Fix**: Base URL auto-detection result is cached — the 2s localhost probe no longer fires on every invocation.
+
+### v0.4.0
+- **New**: Per-user model overrides via `UserValves` — users can set their own council models and chairperson without touching admin config.
+
+### v0.3.0
+- Initial public release with 3-stage council workflow and fallback API support.
+
+---
+
 ## Features
 
 - **Multi-Model Deliberation**: Query multiple models in parallel for diverse perspectives.
@@ -105,4 +120,4 @@ MIT License.
 
 ---
 
-*Maintained by [matheusbuniotto](https://github.com/matheusbuniotto)*
+*Maintained by [matheusbuniotto](https://github.com/matheusbuniotto/openwebui-tools/tree/main/llm_council_tool)*
