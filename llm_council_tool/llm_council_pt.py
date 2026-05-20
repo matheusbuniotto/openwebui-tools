@@ -2,7 +2,7 @@
 title: Conselho de LLMs
 author: matheusbuniotto
 funding_url: https://github.com/matheusbuniotto/openwebui-tools
-version: 0.4.0
+version: 0.4.1
 license: MIT
 """
 
@@ -115,13 +115,20 @@ class Tools:
         1. Configuracao do Valve (se definida)
         2. Variavel de ambiente OPENWEBUI_BASE_URL
         3. Auto-detectar (localhost primeiro, depois Docker interno)
+
+        Resultado em cache em self._resolved_base_url para evitar sondagem a cada chamada.
         """
+        if self._resolved_base_url:
+            return self._resolved_base_url
+
         if self.valves.openwebui_base_url:
-            return self.valves.openwebui_base_url
+            self._resolved_base_url = self.valves.openwebui_base_url
+            return self._resolved_base_url
 
         env_url = os.environ.get("OPENWEBUI_BASE_URL")
         if env_url:
-            return env_url
+            self._resolved_base_url = env_url
+            return self._resolved_base_url
 
         localhost_url = "http://localhost:3000/api"
         docker_url = "http://host.docker.internal:3000/api"
@@ -129,11 +136,13 @@ class Tools:
         try:
             response = requests.get(f"{localhost_url}/models", timeout=2)
             if response.status_code in [200, 401, 403]:
-                return localhost_url
+                self._resolved_base_url = localhost_url
+                return self._resolved_base_url
         except Exception:
             pass
 
-        return docker_url
+        self._resolved_base_url = docker_url
+        return self._resolved_base_url
 
     def _try_fallback(self) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -309,6 +318,8 @@ class Tools:
         else:
             configured_models_raw = self.valves.council_models.lower().strip()
 
+        available_models_lower = {m.lower(): m for m in available_models}
+
         target_models = []
         if configured_models_raw == "all":
             if available_models:
@@ -328,10 +339,12 @@ class Tools:
             ]
 
             if available_models:
+                # Valida com lookup case-insensitive; preserva casing original da API
                 missing_models = []
                 for m in requested_models:
-                    if m in available_models:
-                        target_models.append(m)
+                    canonical = available_models_lower.get(m.lower())
+                    if canonical:
+                        target_models.append(canonical)
                     else:
                         missing_models.append(m)
 
@@ -360,6 +373,9 @@ class Tools:
         chairperson = user_chairperson or self.valves.chairperson_model
         if not chairperson:
             chairperson = council_models_list[0]
+
+        # Resolve chairperson para casing canônico da API
+        chairperson = available_models_lower.get(chairperson.lower(), chairperson)
 
         if available_models and chairperson not in available_models:
             await self._emit_status(
@@ -404,23 +420,32 @@ class Tools:
             return f"Erro: Verifique sua URL base e chave de API do OpenWebUI. Detalhes: {error_msg}"
 
         # --- Etapa 2: Avaliacao entre Pares ---
-        await self._emit_status(
-            __event_emitter__,
-            "info",
-            "Etapa 2: Conselho esta avaliando as respostas dos colegas...",
-            False,
-        )
+        rankings = []
+        if len(valid_responses) < 2:
+            await self._emit_status(
+                __event_emitter__,
+                "info",
+                "Etapa 2: Ignorada (apenas uma resposta valida — sem pares para classificar).",
+                False,
+            )
+        else:
+            await self._emit_status(
+                __event_emitter__,
+                "info",
+                "Etapa 2: Conselho esta avaliando as respostas dos colegas...",
+                False,
+            )
 
-        labels = [chr(65 + i) for i in range(len(valid_responses))]
+            labels = [chr(65 + i) for i in range(len(valid_responses))]
 
-        responses_text = "\n\n".join(
-            [
-                f"Resposta {label}:\n{r['response']}"
-                for label, r in zip(labels, valid_responses)
-            ]
-        )
+            responses_text = "\n\n".join(
+                [
+                    f"Resposta {label}:\n{r['response']}"
+                    for label, r in zip(labels, valid_responses)
+                ]
+            )
 
-        ranking_prompt = f"""Voce esta avaliando diferentes respostas para a seguinte pergunta:
+            ranking_prompt = f"""Voce esta avaliando diferentes respostas para a seguinte pergunta:
 
 Pergunta: {topico}
 
@@ -442,22 +467,21 @@ RANKING FINAL:
 2. Resposta [Rotulo]
 ...
 """
-        ranking_messages = [{"role": "user", "content": ranking_prompt}]
+            ranking_messages = [{"role": "user", "content": ranking_prompt}]
 
-        ranking_tasks = [
-            self._query_model_async(model, ranking_messages, api_key, base_url)
-            for model in council_models_list
-        ]
-        stage2_results_raw = await asyncio.gather(*ranking_tasks)
+            ranking_tasks = [
+                self._query_model_async(model, ranking_messages, api_key, base_url)
+                for model in council_models_list
+            ]
+            stage2_results_raw = await asyncio.gather(*ranking_tasks)
 
-        rankings = []
-        for model, response in stage2_results_raw:
-            if response:
-                content = response.get("content", "")
-                parsed = self._parse_ranking_from_text(content)
-                rankings.append(
-                    {"model": model, "full_text": content, "parsed": parsed}
-                )
+            for model, response in stage2_results_raw:
+                if response:
+                    content = response.get("content", "")
+                    parsed = self._parse_ranking_from_text(content)
+                    rankings.append(
+                        {"model": model, "full_text": content, "parsed": parsed}
+                    )
 
         # --- Etapa 3: Sintese ---
         await self._emit_status(
