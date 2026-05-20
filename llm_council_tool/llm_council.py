@@ -2,17 +2,17 @@
 title: LLM Council Tool
 author: matheusbuniotto
 funding_url: https://github.com/matheusbuniotto/openwebui-tools
-version: 0.3.0
+version: 0.4.0
 license: MIT
 """
 
-import os
 import asyncio
+import os
 import re
-from typing import List, Dict, Any, Tuple, Optional
-from pydantic import BaseModel, Field
-import requests
+from typing import Any, Dict, List, Optional, Tuple
 
+import requests
+from pydantic import BaseModel, Field
 
 DEFAULT_COUNCIL_MODELS = "openai/gpt-4.1,openai/gpt-4o-mini,google/gemini-2.5-flash"
 
@@ -51,11 +51,28 @@ class Tools:
             default=60, description="Timeout in seconds for model requests."
         )
 
+    class UserValves(BaseModel):
+        custom_council_models: str = Field(
+            default="",
+            description="Your personal comma-separated model IDs (e.g., 'llama3:latest,gpt-4o'). Leave empty to use admin global settings.",
+        )
+        custom_chairperson: str = Field(
+            default="",
+            description="Your personal Chairperson model ID. Leave empty to use admin settings.",
+        )
+
     def __init__(self):
         self.valves = self.Valves()
         self._resolved_api_key: Optional[str] = None
         self._resolved_base_url: Optional[str] = None
         self._using_fallback: bool = False
+
+    def _get_user_valve_value(self, user_valves, key: str, default: str = "") -> str:
+        if user_valves is None:
+            return default
+        if isinstance(user_valves, dict):
+            return user_valves.get(key, default)
+        return getattr(user_valves, key, default)
 
     def _resolve_api_key(self, __user__: Optional[dict] = None) -> Optional[str]:
         """
@@ -283,8 +300,21 @@ class Tools:
             None, self._get_available_models, api_key, base_url
         )
 
-        # 2. Determine target models
-        configured_models_raw = self.valves.council_models.lower().strip()
+        # 2. Determine target models — user overrides take priority over admin valves
+        user_obj = __user__ or {}
+        user_valves_obj = user_obj.get("valves")
+
+        user_council_models = self._get_user_valve_value(
+            user_valves_obj, "custom_council_models", ""
+        ).strip()
+        user_chairperson = self._get_user_valve_value(
+            user_valves_obj, "custom_chairperson", ""
+        ).strip()
+
+        if user_council_models:
+            configured_models_raw = user_council_models.lower().strip()
+        else:
+            configured_models_raw = self.valves.council_models.lower().strip()
 
         target_models = []
         if configured_models_raw == "all":
@@ -301,7 +331,7 @@ class Tools:
                 return "Error: 'council_models' set to 'all', but could not fetch available models from API."
         else:
             requested_models = [
-                m.strip() for m in self.valves.council_models.split(",") if m.strip()
+                m.strip() for m in configured_models_raw.split(",") if m.strip()
             ]
 
             if available_models:
@@ -336,8 +366,8 @@ class Tools:
         if not council_models_list:
             return "Error: No council models configured or found."
 
-        # check for chairperson
-        chairperson = self.valves.chairperson_model
+        # check for chairperson — user override takes priority
+        chairperson = user_chairperson or self.valves.chairperson_model
         if not chairperson:
             chairperson = council_models_list[0]
 

@@ -35,6 +35,17 @@ Configure the tool in **OpenWebUI > Workspace > Tools > Valves**:
 | **max_models** | Maximum models when using `all`. Prevents runaway costs. | `5` |
 | **timeout** | Timeout in seconds for model requests. | `60` |
 
+### Per-User Overrides (UserValves)
+
+Users can override the global admin settings from **OpenWebUI > Settings > Tools**:
+
+| UserValve | Description | Default |
+| :--- | :--- | :--- |
+| **custom_council_models** | Your personal comma-separated model IDs. Overrides admin `council_models`. | `""` (use admin setting) |
+| **custom_chairperson** | Your personal chairperson model ID. Overrides admin `chairperson_model`. | `""` (use admin setting) |
+
+Both fields accept the same values as their admin counterparts, including `all` for `custom_council_models`. Leave a field empty to fall back to the admin-configured value.
+
 ---
 
 ## Installation
