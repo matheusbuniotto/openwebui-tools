@@ -25,18 +25,6 @@ A curated collection of high-utility, experimental tools for [OpenWebUI](https:/
 - **Key Feature**: Dynamic placeholder replacement with LLM-generated content.
 
 ---
-
-## 🔬 The Experimental DNA
-
-My background is in Data Science and A/B testing, which drives a **test-everything, ship-fast** mentality. Each tool here is a specific exploration into "LLM Agency"—the ability for models to move beyond text and into action.
-
-### The Builder Philosophy
-1.  **Curiosity First**: Solve a personal friction point or explore an API limit.
-2.  **Action & Shipping**: Move from "what if" to "it works" quickly.
-3.  **Modular Design**: Tools are self-contained and easy to port into any OpenWebUI instance.
-
----
-
 ## 🚀 Getting Started
 
 Each tool is designed for easy installation:
@@ -52,6 +40,6 @@ Each tool is designed for easy installation:
 
 ## 🤝 Contributing
 
-These tools are built through chronic experimentation. If you find a bug or have an idea for a new "vibe", feel free to open an issue or a PR.
+If you run into bugs or have an idea for a new tool, feel free to open an issue or PR.
 
 Built with ❤️ by [matheusbuniotto](https://github.com/matheusbuniotto)
