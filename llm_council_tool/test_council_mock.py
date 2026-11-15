@@ -2,7 +2,6 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from llm_council import Tools
 
 # Mock response data

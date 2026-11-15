@@ -1,45 +1,28 @@
-# 🧪 OpenWebUI Tools Lab
+# OpenWebUI Tools Lab
 
-A curated collection of high-utility, experimental tools for [OpenWebUI](https://github.com/open-webui/open-webui). These tools are built to bridge the gap between LLM reasoning and real-world execution, focusing on automation, knowledge retrieval, and creative workflows.
+[![CI](https://github.com/matheusbuniotto/openwebui-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/matheusbuniotto/openwebui-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🛠️ Available Tools
+Python tools for [OpenWebUI](https://github.com/open-webui/open-webui). Each folder is a standalone tool you can paste into **Workspace → Tools → Create Tool**, with optional Valves for API keys and endpoints.
 
-### 🧠 [LLM Council](./llm_council_tool)
-**Consensus-driven reasoning.** Orchestrates a deliberation process among multiple models (e.g., GPT-4, Gemini, Claude). It features a 3-stage pipeline: individual responses, anonymous peer-ranking, and chairperson synthesis to provide high-confidence answers.
-- **Key Feature**: Peer evaluation eliminates single-model bias.
+## Tools
 
-### 🎵 [Spotify Vibe Controller](./spotify_tool)
-**Semantic music curation.** Translates the mood and context of your chat into a curated Spotify playlist. Tell it how you feel or what you're working on, and it will build a matching soundtrack using semantic analysis.
-- **Key Feature**: Automatic playlist generation based on conversational context.
+| Tool | Description |
+|------|-------------|
+| [LLM Council](./llm_council_tool) | Runs a question through multiple models, ranks peer answers, and synthesizes a final reply. |
+| [Spotify Vibe Controller](./spotify_tool) | Suggests Spotify playlists from mood and context in the chat. |
+| [N8N Workflow Executor](./n8n_tool) | Calls an n8n webhook and returns the workflow result in chat. |
+| [Pinecone RAG](./pinecone_rag_tool) | Embeds the query with OpenAI and searches a Pinecone index for context. |
+| [Google Docs Templater](./docs_connector_tool) | Fills a Google Docs template via a Google Apps Script webhook. |
 
-### ⚡ [N8N Workflow Executor](./n8n_tool)
-**The universal connector.** Bridges OpenWebUI to the N8N automation ecosystem. Trigger complex workflows, interact with thousands of apps, and receive results directly in your chat interface.
-- **Key Feature**: Session-aware executions that maintain context between your chat and N8N.
+## Install a tool
 
-### 🌲 [Pinecone RAG](./pinecone_rag_tool)
-**Long-term semantic memory.** Provides agents with access to persistent knowledge bases. It handles embedding generation and semantic search to ground responses in your own data.
-- **Key Feature**: Seamless integration with Pinecone for production-grade retrieval.
+1. Open the tool folder (for example, `llm_council_tool/`).
+2. Copy the main `.py` file into OpenWebUI (**Workspace → Tools → + Create Tool**).
+3. Set Valves in the UI (API keys, URLs, and so on).
 
-### 📄 [Google Docs Templater](./docs_connector_tool)
-**Last-mile productivity.** Automates document creation by filling Google Doc templates via Google Apps Script. Perfect for generating invoices, proposals, or reports directly from a chat.
-- **Key Feature**: Dynamic placeholder replacement with LLM-generated content.
+## Contributing
 
----
-## 🚀 Getting Started
+Issues and pull requests are welcome.
 
-Each tool is designed for easy installation:
-
-1.  **Pick a Tool**: Navigate to the specific tool's directory (e.g., `/llm_council_tool`).
-2.  **Copy the Code**: Open the main Python file (usually `tool_name.py`) and copy the content.
-3.  **Install in OpenWebUI**: 
-    - Go to **Workspace** > **Tools** > **+ Create Tool**.
-    - Paste the code and save.
-4.  **Configure Valves**: Enter any required API keys (OpenAI, Spotify, etc.) in the tool's **Valves** configuration in the UI.
-
----
-
-## 🤝 Contributing
-
-If you run into bugs or have an idea for a new tool, feel free to open an issue or PR.
-
-Built with ❤️ by [matheusbuniotto](https://github.com/matheusbuniotto)
+Maintained by [matheusbuniotto](https://github.com/matheusbuniotto).

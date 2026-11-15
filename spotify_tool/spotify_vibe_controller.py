@@ -6,23 +6,21 @@ version: 0.0.1
 license: MIT
 """
 
+import contextlib
 import json
 import time
-from typing import Optional, Any, Dict, List
-from pydantic import BaseModel, Field
+from typing import Any
+
 import requests
+from pydantic import BaseModel, Field
 
 
 class SpotifyAuthError(Exception):
     """Raised when Spotify authentication fails."""
 
-    pass
-
 
 class SpotifyAPIError(Exception):
     """Raised when Spotify API call fails."""
-
-    pass
 
 
 class SpotifyAuthClient:
@@ -33,7 +31,7 @@ class SpotifyAuthClient:
     def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.access_token: Optional[str] = None
+        self.access_token: str | None = None
         self.token_expires_at: float = 0
 
     def _is_token_valid(self) -> bool:
@@ -60,11 +58,9 @@ class SpotifyAuthClient:
 
             if response.status_code != 200:
                 error_detail = response.text
-                try:
+                with contextlib.suppress(ValueError, KeyError):
                     error_json = response.json()
                     error_detail = error_json.get("error_description", error_detail)
-                except Exception:
-                    pass
                 raise SpotifyAuthError(
                     f"Authentication failed ({response.status_code}): {error_detail}"
                 )
@@ -76,7 +72,7 @@ class SpotifyAuthClient:
 
             return self.access_token
         except requests.exceptions.RequestException as e:
-            raise SpotifyAuthError(f"Network error during authentication: {str(e)}")
+            raise SpotifyAuthError(f"Network error during authentication: {e!s}")
 
 
 class SemanticAnalyzer:
@@ -86,7 +82,7 @@ class SemanticAnalyzer:
         self.openai_api_key = openai_api_key
         self.api_url = "https://api.openai.com/v1/chat/completions"
 
-    def analyze_context(self, text: str) -> Dict[str, Any]:
+    def analyze_context(self, text: str) -> dict[str, Any]:
         """
         Analyzes text to extract musical context.
         Returns mood, genres, era, and search terms.
@@ -128,12 +124,12 @@ Return ONLY valid JSON, no markdown."""
             if response.status_code == 200:
                 content = response.json()["choices"][0]["message"]["content"]
                 return json.loads(content.strip())
-        except Exception:
-            pass
+        except (requests.RequestException, ValueError, KeyError):
+            return self._default_analysis(text)
 
         return self._default_analysis(text)
 
-    def _default_analysis(self, text: str) -> Dict[str, Any]:
+    def _default_analysis(self, text: str) -> dict[str, Any]:
         """Fallback analysis when OpenAI is unavailable."""
         text_lower = text.lower()
         mood = "neutral"
@@ -154,7 +150,9 @@ Return ONLY valid JSON, no markdown."""
         elif any(word in text_lower for word in ["sad", "melancholic", "melancholy"]):
             mood = "melancholic"
             search_terms.append("melancholic")
-        elif any(word in text_lower for word in ["cozy", "warm", "comfortable", "relaxed"]):
+        elif any(
+            word in text_lower for word in ["cozy", "warm", "comfortable", "relaxed"]
+        ):
             mood = "cozy"
             search_terms.append("cozy")
         elif any(word in text_lower for word in ["peaceful", "calm", "serene"]):
@@ -208,16 +206,40 @@ Return ONLY valid JSON, no markdown."""
         # Extract meaningful words
         words = text.split()
         stop_words = {
-            "i", "im", "i'm", "and", "a", "for", "of", "the", "to", "in", "is", "my", "me",
-            "need", "currently", "playlist", "on", "at", "with", "family", "day"
+            "i",
+            "im",
+            "i'm",
+            "and",
+            "a",
+            "for",
+            "of",
+            "the",
+            "to",
+            "in",
+            "is",
+            "my",
+            "me",
+            "need",
+            "currently",
+            "playlist",
+            "on",
+            "at",
+            "with",
+            "family",
+            "day",
         }
         for word in words:
             clean_word = word.strip(".,!?\"'")
             lower_word = clean_word.lower()
-            if (lower_word not in stop_words and lower_word not in search_terms 
-                and len(lower_word) > 2 and lower_word not in ["the", "and", "for"]):
-                if lower_word not in ["nostalgic", "energetic", "sad", "reading", "cooking"]:
-                    search_terms.append(clean_word)
+            if (
+                lower_word not in stop_words
+                and lower_word not in search_terms
+                and len(lower_word) > 2
+                and lower_word not in ["the", "and", "for"]
+                and lower_word
+                not in ["nostalgic", "energetic", "sad", "reading", "cooking"]
+            ):
+                search_terms.append(clean_word)
 
         return {
             "mood": mood,
@@ -226,7 +248,9 @@ Return ONLY valid JSON, no markdown."""
             "weather": weather,
             "genres": genres,
             "era": era,
-            "search_terms": search_terms[:8] if search_terms else ["ambient", "relaxing"],
+            "search_terms": search_terms[:8]
+            if search_terms
+            else ["ambient", "relaxing"],
         }
 
 
@@ -238,14 +262,14 @@ class SpotifyAPIClient:
     def __init__(self, auth_client: SpotifyAuthClient):
         self.auth_client = auth_client
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Gets headers with valid access token."""
         token = self.auth_client.get_access_token()
         return {"Authorization": f"Bearer {token}"}
 
     def search_tracks(
         self, query: str, limit: int = 20, market: str = "US"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Searches for tracks matching the query."""
         headers = self._get_headers()
         params = {"q": query, "type": "track", "limit": limit, "market": market}
@@ -263,7 +287,7 @@ class SpotifyAPIClient:
 
     def search_playlists(
         self, query: str, limit: int = 10, market: str = "US"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Searches for playlists matching the query."""
         headers = self._get_headers()
         params = {"q": query, "type": "playlist", "limit": limit, "market": market}
@@ -321,7 +345,7 @@ class SpotifyAPIClient:
     #
     #     return response.json()
 
-    def get_current_user(self) -> Dict[str, Any]:
+    def get_current_user(self) -> dict[str, Any]:
         """Gets current user info (requires user auth, returns mock for now)."""
         return {"id": "default_user", "display_name": "OpenWebUI User"}
 
@@ -332,7 +356,7 @@ class PlaylistFinder:
     def __init__(self, api_client: SpotifyAPIClient):
         self.api_client = api_client
 
-    def find_mood_playlist(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def find_mood_playlist(self, context: dict[str, Any]) -> dict[str, Any]:
         """Finds playlists based on mood and context."""
         mood = context.get("mood", "neutral")
         activity = context.get("activity")
@@ -344,7 +368,7 @@ class PlaylistFinder:
 
         # Construct intelligent search queries combining all context
         queries = []
-        
+
         # 1. Full context combination (most specific)
         full_context_parts = []
         if activity:
@@ -355,30 +379,30 @@ class PlaylistFinder:
             full_context_parts.append(weather)
         if mood and mood != "neutral":
             full_context_parts.append(mood)
-        
+
         if len(full_context_parts) >= 2:
             queries.append(" ".join(full_context_parts))
-        
+
         # 2. Activity + Time + Mood
         if activity and time_context and mood != "neutral":
             queries.append(f"{activity} {time_context} {mood}")
-        
+
         # 3. Activity + Weather
         if activity and weather:
             queries.append(f"{activity} {weather}")
-        
+
         # 4. Time + Weather + Mood
         if time_context and weather and mood != "neutral":
             queries.append(f"{time_context} {weather} {mood}")
-        
+
         # 5. Activity + Mood
         if activity and mood != "neutral":
             queries.append(f"{activity} {mood}")
-        
+
         # 6. Weather + Mood
         if weather and mood != "neutral":
             queries.append(f"{weather} {mood}")
-        
+
         # 7. Era + Genre combinations
         if era and genres:
             queries.append(f"{mood} {era} {genres[0]}")
@@ -386,11 +410,11 @@ class PlaylistFinder:
             queries.append(f"{mood} {genres[0]}")
         elif era:
             queries.append(f"{mood} {era}")
-        
+
         # 8. Direct search terms (prioritize longer, more specific ones)
         prioritized_terms = sorted(search_terms, key=len, reverse=True)
         queries.extend(prioritized_terms[:5])
-        
+
         # 9. Fallback: mood vibe
         if mood != "neutral":
             queries.append(f"{mood} vibe")
@@ -410,9 +434,9 @@ class PlaylistFinder:
                     if p_id and p_id not in seen_ids:
                         found_playlists.append(playlist)
                         seen_ids.add(p_id)
-            except Exception:
+            except (SpotifyAPIError, requests.RequestException):
                 continue
-            
+
             # If we found enough playlists, stop searching
             if len(found_playlists) >= 8:
                 break
@@ -425,13 +449,13 @@ class PlaylistFinder:
                 try:
                     tracks = self.api_client.search_tracks(query, limit=10)
                     track_suggestions.extend(tracks[:5])
-                except Exception:
+                except (SpotifyAPIError, requests.RequestException):
                     continue
 
         if not found_playlists and not track_suggestions:
             return {
                 "found": False,
-                "error": "No playlists or tracks found matching the vibe."
+                "error": "No playlists or tracks found matching the vibe.",
             }
 
         result = {
@@ -439,19 +463,23 @@ class PlaylistFinder:
             "playlists": found_playlists[:5],  # Top 5 playlists
             "track_suggestions": track_suggestions[:10] if track_suggestions else [],
         }
-        
+
         if found_playlists:
             best_match = found_playlists[0]
-            result.update({
-                "playlist_name": best_match.get("name"),
-                "playlist_url": best_match.get("external_urls", {}).get("spotify"),
-                "description": best_match.get("description"),
-                "image_url": best_match.get("images", [{}])[0].get("url") if best_match.get("images") else None,
-                "owner": best_match.get("owner", {}).get("display_name"),
-                "total_tracks": best_match.get("tracks", {}).get("total"),
-                "alternatives": found_playlists[1:5]  # Top 4 alternatives
-            })
-        
+            result.update(
+                {
+                    "playlist_name": best_match.get("name"),
+                    "playlist_url": best_match.get("external_urls", {}).get("spotify"),
+                    "description": best_match.get("description"),
+                    "image_url": best_match.get("images", [{}])[0].get("url")
+                    if best_match.get("images")
+                    else None,
+                    "owner": best_match.get("owner", {}).get("display_name"),
+                    "total_tracks": best_match.get("tracks", {}).get("total"),
+                    "alternatives": found_playlists[1:5],  # Top 4 alternatives
+                }
+            )
+
         return result
 
 
@@ -479,15 +507,18 @@ class Tools:
 
     def __init__(self):
         self.valves = self.Valves()
-        self._auth_client: Optional[SpotifyAuthClient] = None
-        self._api_client: Optional[SpotifyAPIClient] = None
-        self._semantic_analyzer: Optional[SemanticAnalyzer] = None
-        self._playlist_finder: Optional[PlaylistFinder] = None
+        self._auth_client: SpotifyAuthClient | None = None
+        self._api_client: SpotifyAPIClient | None = None
+        self._semantic_analyzer: SemanticAnalyzer | None = None
+        self._playlist_finder: PlaylistFinder | None = None
 
     def _initialize_clients(self):
         """Lazy initialization of clients."""
         if not self._auth_client:
-            if not self.valves.SPOTIFY_CLIENT_ID or not self.valves.SPOTIFY_CLIENT_SECRET:
+            if (
+                not self.valves.SPOTIFY_CLIENT_ID
+                or not self.valves.SPOTIFY_CLIENT_SECRET
+            ):
                 raise ValueError(
                     "Spotify credentials are missing. Check the tool Valves."
                 )
@@ -501,12 +532,12 @@ class Tools:
     async def find_vibe_playlist(
         self,
         context_text: str,
-        __event_emitter__: Optional[Any] = None,
+        __event_emitter__: Any | None = None,
     ) -> str:
         """
         Finds a Spotify playlist based on the semantic context of the conversation.
         Example: "I'm feeling nostalgic about 2000s RPG games" finds a relevant playlist.
-        
+
         :param context_text: The text describing the mood, context, or desired music vibe.
         :param __event_emitter__: Optional event emitter for status updates in the UI.
         :return: A formatted string with playlist details and results.
@@ -524,13 +555,16 @@ class Tools:
             context = self._semantic_analyzer.analyze_context(context_text)
 
             await self._emit_status(
-                __event_emitter__, "searching", "Searching for matching playlists...", False
+                __event_emitter__,
+                "searching",
+                "Searching for matching playlists...",
+                False,
             )
             result = self._playlist_finder.find_mood_playlist(context)
 
             playlists = result.get("playlists", [])
             track_suggestions = result.get("track_suggestions", [])
-            
+
             if playlists:
                 # Found playlists
                 await self._emit_status(
@@ -539,22 +573,26 @@ class Tools:
                     f"Found {len(playlists)} matching playlist(s)!",
                     True,
                 )
-                
+
                 # Build response with all playlists
-                response_parts = [f"🎵 **Found {len(playlists)} playlist(s) for your vibe:**\n"]
-                
+                response_parts = [
+                    f"🎵 **Found {len(playlists)} playlist(s) for your vibe:**\n"
+                ]
+
                 for i, playlist in enumerate(playlists[:5], 1):
                     name = playlist.get("name", "Unknown")
                     # Get URL from multiple possible locations
                     url = (
-                        playlist.get("external_urls", {}).get("spotify") or
-                        playlist.get("href", "").replace("/v1/playlists/", "https://open.spotify.com/playlist/") or
-                        f"https://open.spotify.com/playlist/{playlist.get('id', '')}"
+                        playlist.get("external_urls", {}).get("spotify")
+                        or playlist.get("href", "").replace(
+                            "/v1/playlists/", "https://open.spotify.com/playlist/"
+                        )
+                        or f"https://open.spotify.com/playlist/{playlist.get('id', '')}"
                     )
                     owner = playlist.get("owner", {}).get("display_name", "Unknown")
                     total = playlist.get("tracks", {}).get("total", 0)
                     description = playlist.get("description", "")
-                    
+
                     # Always show the link prominently and avoid Markdown links on titles to prevent stripping
                     if url:
                         response_parts.append(
@@ -565,7 +603,11 @@ class Tools:
                     else:
                         # Fallback if URL is somehow missing
                         playlist_id = playlist.get("id", "")
-                        fallback_url = f"https://open.spotify.com/playlist/{playlist_id}" if playlist_id else ""
+                        fallback_url = (
+                            f"https://open.spotify.com/playlist/{playlist_id}"
+                            if playlist_id
+                            else ""
+                        )
                         response_parts.append(
                             f"\n**{i}. {name}**\n"
                             f"Link: {fallback_url}\n"
@@ -573,17 +615,21 @@ class Tools:
                         )
                     if description:
                         response_parts.append(f"📝 {description[:100]}...")
-                
+
                 # Add track suggestions if available
                 if track_suggestions:
-                    response_parts.append(f"\n\n🎶 **Track Suggestions:**\n")
+                    response_parts.append("\n\n🎶 **Track Suggestions:**\n")
                     for i, track in enumerate(track_suggestions[:10], 1):
-                        artists = ", ".join([a["name"] for a in track.get("artists", [])])
+                        artists = ", ".join(
+                            [a["name"] for a in track.get("artists", [])]
+                        )
                         # Get track URL from multiple possible locations
                         track_url = (
-                            track.get("external_urls", {}).get("spotify") or
-                            track.get("href", "").replace("/v1/tracks/", "https://open.spotify.com/track/") or
-                            f"https://open.spotify.com/track/{track.get('id', '')}"
+                            track.get("external_urls", {}).get("spotify")
+                            or track.get("href", "").replace(
+                                "/v1/tracks/", "https://open.spotify.com/track/"
+                            )
+                            or f"https://open.spotify.com/track/{track.get('id', '')}"
                         )
                         if track_url:
                             response_parts.append(
@@ -594,7 +640,7 @@ class Tools:
                             response_parts.append(
                                 f"{i}. **{track['name']}** by {artists}"
                             )
-                
+
                 # Add context summary
                 context_summary = []
                 if context.get("activity"):
@@ -605,12 +651,14 @@ class Tools:
                     context_summary.append(f"weather: {context['weather']}")
                 if context.get("mood") and context.get("mood") != "neutral":
                     context_summary.append(f"mood: {context['mood']}")
-                
+
                 if context_summary:
-                    response_parts.append(f"\n\n*Context: {', '.join(context_summary)}*")
-                
+                    response_parts.append(
+                        f"\n\n*Context: {', '.join(context_summary)}*"
+                    )
+
                 return "\n".join(response_parts)
-                
+
             elif track_suggestions:
                 # Only track suggestions available
                 await self._emit_status(
@@ -619,29 +667,28 @@ class Tools:
                     f"Found {len(track_suggestions)} matching tracks!",
                     True,
                 )
-                
+
                 response_parts = [
                     f"🎶 **Found {len(track_suggestions)} track(s) matching your vibe:**\n"
                 ]
-                
+
                 for i, track in enumerate(track_suggestions[:15], 1):
                     artists = ", ".join([a["name"] for a in track.get("artists", [])])
                     # Get track URL from multiple possible locations
                     track_url = (
-                        track.get("external_urls", {}).get("spotify") or
-                        track.get("href", "").replace("/v1/tracks/", "https://open.spotify.com/track/") or
-                        f"https://open.spotify.com/track/{track.get('id', '')}"
+                        track.get("external_urls", {}).get("spotify")
+                        or track.get("href", "").replace(
+                            "/v1/tracks/", "https://open.spotify.com/track/"
+                        )
+                        or f"https://open.spotify.com/track/{track.get('id', '')}"
                     )
                     if track_url:
                         response_parts.append(
-                            f"{i}. **{track['name']}** by {artists}\n"
-                            f"   🔗 {track_url}"
+                            f"{i}. **{track['name']}** by {artists}\n   🔗 {track_url}"
                         )
                     else:
-                        response_parts.append(
-                            f"{i}. **{track['name']}** by {artists}"
-                        )
-                
+                        response_parts.append(f"{i}. **{track['name']}** by {artists}")
+
                 # Add context summary
                 context_summary = []
                 if context.get("activity"):
@@ -652,10 +699,10 @@ class Tools:
                     context_summary.append(f"weather: {context['weather']}")
                 if context.get("mood") and context.get("mood") != "neutral":
                     context_summary.append(f"mood: {context['mood']}")
-                
+
                 if context_summary:
                     response_parts.append(f"\n*Context: {', '.join(context_summary)}*")
-                
+
                 return "\n".join(response_parts)
             else:
                 # Nothing found
@@ -677,29 +724,27 @@ class Tools:
                 )
 
         except ValueError as e:
-            await self._emit_status(
-                __event_emitter__, "error", str(e), True
-            )
-            return f"❌ Configuration Error: {str(e)}"
+            await self._emit_status(__event_emitter__, "error", str(e), True)
+            return f"❌ Configuration Error: {e!s}"
         except SpotifyAuthError as e:
             await self._emit_status(
                 __event_emitter__, "error", "Authentication failed", True
             )
-            return f"❌ Spotify Authentication Error: {str(e)}"
+            return f"❌ Spotify Authentication Error: {e!s}"
         except SpotifyAPIError as e:
             await self._emit_status(
                 __event_emitter__, "error", "API request failed", True
             )
-            return f"❌ Spotify API Error: {str(e)}"
-        except Exception as e:
+            return f"❌ Spotify API Error: {e!s}"
+        except (RuntimeError, OSError, TypeError, KeyError) as e:
             await self._emit_status(
-                __event_emitter__, "error", f"Unexpected error: {str(e)}", True
+                __event_emitter__, "error", f"Unexpected error: {e!s}", True
             )
-            return f"❌ Error: {str(e)}"
+            return f"❌ Error: {e!s}"
 
     async def _emit_status(
         self,
-        handler: Optional[Any],
+        handler: Any | None,
         status_id: str,
         description: str,
         done: bool,
@@ -712,4 +757,3 @@ class Tools:
                     "data": {"description": description, "done": done},
                 }
             )
-

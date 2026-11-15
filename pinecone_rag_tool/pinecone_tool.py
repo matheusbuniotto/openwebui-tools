@@ -6,9 +6,12 @@ version: 0.0.1
 license: MIT
 """
 
+import asyncio
+from collections.abc import Callable
+from typing import Any
+
 import requests
 from pydantic import BaseModel, Field
-from typing import Callable, Any
 
 
 class Tools:
@@ -36,7 +39,7 @@ class Tools:
         self.cached_host = None
 
     async def query_pinecone(
-        self, query: str, __event_emitter__: Callable[[dict], Any] = None
+        self, query: str, __event_emitter__: Callable[[dict], Any] | None = None
     ) -> str:
         """
         RAG Tool for Pinecone.
@@ -81,14 +84,15 @@ class Tools:
             # The model must be compatible with the one used in database creation
             embedding_payload = {"input": query, "model": "text-embedding-3-small"}
 
-            emb_response = requests.post(
+            emb_response = await asyncio.to_thread(
+                requests.post,
                 "https://api.openai.com/v1/embeddings",
                 headers=embedding_headers,
                 json=embedding_payload,
             )
 
             if emb_response.status_code != 200:
-                raise Exception(
+                raise RuntimeError(
                     f"OpenAI Error ({emb_response.status_code}): {emb_response.text}"
                 )
 
@@ -111,14 +115,17 @@ class Tools:
                 "includeValues": False,
             }
 
-            response = requests.post(
-                pinecone_url, headers=pinecone_headers, json=pinecone_payload
+            response = await asyncio.to_thread(
+                requests.post,
+                pinecone_url,
+                headers=pinecone_headers,
+                json=pinecone_payload,
             )
 
             if response.status_code != 200:
                 # If it fails, clear the host cache to try rediscovery next time
                 self.cached_host = None
-                raise Exception(f"Pinecone Error: {response.text}")
+                raise RuntimeError(f"Pinecone Error: {response.text}")
 
             matches = response.json().get("matches", [])
 
@@ -156,11 +163,11 @@ class Tools:
             )
             return f"Context retrieved from Pinecone:\n{final_context}"
 
-        except Exception as e:
+        except (RuntimeError, requests.RequestException, ValueError, KeyError) as e:
             await self._emit_status(
-                __event_emitter__, "error", f"Technical Error: {str(e)}", True
+                __event_emitter__, "error", f"Technical Error: {e!s}", True
             )
-            return f"An error occurred while searching the knowledge base: {str(e)}"
+            return f"An error occurred while searching the knowledge base: {e!s}"
 
     def _fetch_index_host(self, api_key, index_name):
         """Discovers the host URL based on the index name."""
@@ -169,14 +176,14 @@ class Tools:
 
         resp = requests.get(url, headers=headers)
         if resp.status_code != 200:
-            raise Exception(f"Failed to list indexes: {resp.text}")
+            raise RuntimeError(f"Failed to list indexes: {resp.text}")
 
         data = resp.json()
         for idx in data.get("indexes", []):
             if idx.get("name") == index_name:
                 return idx.get("host")
 
-        raise Exception(
+        raise RuntimeError(
             f"Index '{index_name}' not found in the provided Pinecone account."
         )
 

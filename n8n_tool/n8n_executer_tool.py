@@ -6,10 +6,12 @@ version: 0.0.1
 license: MIT
 """
 
-from typing import Optional, Callable, Awaitable
-from pydantic import BaseModel, Field
-import requests
+import asyncio
 import time
+from collections.abc import Awaitable, Callable
+
+import requests
+from pydantic import BaseModel, Field
 
 
 class Tools:
@@ -37,7 +39,7 @@ class Tools:
 
     async def emit_status(
         self,
-        __event_emitter__: Optional[Callable[[dict], Awaitable[None]]],
+        __event_emitter__: Callable[[dict], Awaitable[None]] | None,
         level: str,
         message: str,
         done: bool,
@@ -69,8 +71,8 @@ class Tools:
     async def invoke_n8n_workflow(
         self,
         input_text: str,
-        __user__: Optional[dict] = None,
-        __event_emitter__: Optional[Callable[[dict], Awaitable[None]]] = None,
+        __user__: dict | None = None,
+        __event_emitter__: Callable[[dict], Awaitable[None]] | None = None,
     ) -> dict:
         """
         Invokes the N8N workflow with the provided input text and returns a structured response.
@@ -115,25 +117,25 @@ class Tools:
                     payload["sessionId"] = chat_id
 
             # Invoke N8N workflow
-            response = requests.post(self.valves.n8n_url, json=payload, headers=headers)
+            response = await asyncio.to_thread(
+                requests.post, self.valves.n8n_url, json=payload, headers=headers
+            )
 
             if response.status_code == 200:
                 n8n_response = response.json()[self.valves.response_field]
                 # Append assistant response to messages, like the pipe
                 body["messages"].append({"role": "assistant", "content": n8n_response})
             else:
-                raise Exception(f"Error: {response.status_code} - {response.text}")
+                raise RuntimeError(f"Error: {response.status_code} - {response.text}")
 
-        except Exception as e:
+        except (RuntimeError, requests.RequestException, KeyError) as e:
             await self.emit_status(
                 __event_emitter__,
                 "error",
-                f"Error during N8N workflow execution: {str(e)}",
+                f"Error during N8N workflow execution: {e!s}",
                 True,
             )
-            body["messages"].append(
-                {"role": "assistant", "content": f"Error: {str(e)}"}
-            )
+            body["messages"].append({"role": "assistant", "content": f"Error: {e!s}"})
             return {"error": str(e), "messages": body["messages"]}
 
         # Emit completion status
@@ -142,7 +144,7 @@ class Tools:
         # Return structured output like the pipe
         return {"response": n8n_response, "messages": body["messages"]}
 
-    def extract_event_info(self, event_emitter) -> tuple[Optional[str], Optional[str]]:
+    def extract_event_info(self, event_emitter) -> tuple[str | None, str | None]:
         """
         Extracts chat_id and message_id from the event emitter, if available.
         """

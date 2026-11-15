@@ -7,9 +7,10 @@ license: MIT
 """
 
 import asyncio
+import contextlib
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 from pydantic import BaseModel, Field
@@ -63,8 +64,8 @@ class Tools:
 
     def __init__(self):
         self.valves = self.Valves()
-        self._resolved_api_key: Optional[str] = None
-        self._resolved_base_url: Optional[str] = None
+        self._resolved_api_key: str | None = None
+        self._resolved_base_url: str | None = None
         self._using_fallback: bool = False
 
     def _get_user_valve_value(self, user_valves, key: str, default: str = "") -> str:
@@ -74,7 +75,7 @@ class Tools:
             return user_valves.get(key, default)
         return getattr(user_valves, key, default)
 
-    def _resolve_api_key(self, __user__: Optional[dict] = None) -> Optional[str]:
+    def _resolve_api_key(self, __user__: dict | None = None) -> str | None:
         """
         Resolves API key in order of priority:
         1. __user__ dict token (passed by OpenWebUI)
@@ -95,7 +96,7 @@ class Tools:
 
         return None
 
-    def _resolve_fallback_api_key(self) -> Optional[str]:
+    def _resolve_fallback_api_key(self) -> str | None:
         """
         Resolves fallback API key for OpenAI/OpenRouter.
         """
@@ -134,18 +135,16 @@ class Tools:
         localhost_url = "http://localhost:3000/api"
         docker_url = "http://host.docker.internal:3000/api"
 
-        try:
+        with contextlib.suppress(requests.RequestException):
             response = requests.get(f"{localhost_url}/models", timeout=2)
             if response.status_code in [200, 401, 403]:
                 self._resolved_base_url = localhost_url
                 return self._resolved_base_url
-        except Exception:
-            pass
 
         self._resolved_base_url = docker_url
         return self._resolved_base_url
 
-    def _try_fallback(self) -> Tuple[Optional[str], Optional[str]]:
+    def _try_fallback(self) -> tuple[str | None, str | None]:
         """
         Attempts to use fallback API (OpenAI/OpenRouter).
         Returns (api_key, base_url) or (None, None) if unavailable.
@@ -179,8 +178,8 @@ class Tools:
             )
 
     def _query_model_sync(
-        self, model: str, messages: List[Dict[str, Any]], api_key: str, base_url: str
-    ) -> Optional[Dict[str, Any]]:
+        self, model: str, messages: list[dict[str, Any]], api_key: str, base_url: str
+    ) -> dict[str, Any] | None:
         """
         Synchronous helper to query a single model via OpenWebUI API.
         """
@@ -201,13 +200,13 @@ class Tools:
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"Error querying model {model}: {e}")
             return {"error": str(e)}
 
     async def _query_model_async(
-        self, model: str, messages: List[Dict[str, Any]], api_key: str, base_url: str
-    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        self, model: str, messages: list[dict[str, Any]], api_key: str, base_url: str
+    ) -> tuple[str, dict[str, Any] | None]:
         """
         Async wrapper for querying a model.
         """
@@ -218,7 +217,7 @@ class Tools:
         )
         return model, result
 
-    def _parse_ranking_from_text(self, ranking_text: str) -> List[str]:
+    def _parse_ranking_from_text(self, ranking_text: str) -> list[str]:
         """
         Extracts the ranking list from the model's text response.
         Looks for 'FINAL RANKING:' followed by '1. Response X'.
@@ -245,7 +244,7 @@ class Tools:
         matches = re.findall(r"Response [A-Z]", ranking_text)
         return matches
 
-    def _get_available_models(self, api_key: str, base_url: str) -> List[str]:
+    def _get_available_models(self, api_key: str, base_url: str) -> list[str]:
         """
         Fetches the list of available model IDs from the OpenWebUI API.
         """
@@ -261,14 +260,14 @@ class Tools:
             data = response.json()
             # OpenWebUI /api/models format: {"data": [{"id": "model_id", ...}, ...]}
             return [model["id"] for model in data.get("data", [])]
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"Error fetching available models: {e}")
             return []
 
     async def consult_council(
         self,
         topic: str,
-        __user__: Optional[dict] = None,
+        __user__: dict | None = None,
         __event_emitter__: Any = None,
     ) -> str:
         """

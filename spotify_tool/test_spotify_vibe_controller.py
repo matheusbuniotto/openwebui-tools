@@ -3,25 +3,24 @@ Unit tests for Spotify Vibe Controller.
 Following TDD methodology with RED and GREEN tests.
 """
 
-import pytest
+import importlib.util
 import time
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from spotify_vibe_controller import (
-    SpotifyAuthClient,
+    PlaylistFinder,
     SemanticAnalyzer,
     SpotifyAPIClient,
-    SpotifyAPIClient,
-    PlaylistFinder,
-    Tools,
-    SpotifyAuthError,
     SpotifyAPIError,
+    SpotifyAuthClient,
+    SpotifyAuthError,
+    Tools,
 )
 
-try:
-    import pytest_asyncio
+if importlib.util.find_spec("pytest_asyncio") is not None:
     pytestmark = pytest.mark.asyncio
-except ImportError:
-    # If pytest-asyncio is not available, skip async tests
+else:
     pytestmark = pytest.mark.skip(reason="pytest-asyncio not installed")
 
 
@@ -121,12 +120,16 @@ class TestSemanticAnalyzer:
     def test_default_analysis_reading(self):
         """Test default analysis for reading context with specific subject."""
         analyzer = SemanticAnalyzer("")
-        result = analyzer.analyze_context("Im currently reading tolkien and i need a playlist")
+        result = analyzer.analyze_context(
+            "Im currently reading tolkien and i need a playlist"
+        )
 
         # This is what we WANT to happen
         assert result["activity"] == "reading"
         assert "reading music" in result["search_terms"]
-        assert "tolkien" in result["search_terms"] or "Tolkien" in result["search_terms"]
+        assert (
+            "tolkien" in result["search_terms"] or "Tolkien" in result["search_terms"]
+        )
 
     @patch("spotify_vibe_controller.requests.post")
     def test_openai_analysis_success(self, mock_post):
@@ -220,8 +223,16 @@ class TestSpotifyAPIClient:
         mock_response.json.return_value = {
             "playlists": {
                 "items": [
-                    {"id": "playlist1", "name": "Playlist 1", "uri": "spotify:playlist:1"},
-                    {"id": "playlist2", "name": "Playlist 2", "uri": "spotify:playlist:2"},
+                    {
+                        "id": "playlist1",
+                        "name": "Playlist 1",
+                        "uri": "spotify:playlist:1",
+                    },
+                    {
+                        "id": "playlist2",
+                        "name": "Playlist 2",
+                        "uri": "spotify:playlist:2",
+                    },
                 ]
             }
         }
@@ -292,9 +303,7 @@ class TestTools:
 
     @patch("spotify_vibe_controller.SpotifyAuthClient.get_access_token")
     @patch("spotify_vibe_controller.SpotifyAPIClient.search_playlists")
-    async def test_find_vibe_playlist_success(
-        self, mock_search, mock_token
-    ):
+    async def test_find_vibe_playlist_success(self, mock_search, mock_token):
         """Test successful vibe playlist finding."""
         mock_token.return_value = "test_token"
         mock_search.return_value = [
@@ -334,4 +343,3 @@ class TestTools:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

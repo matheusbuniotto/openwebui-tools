@@ -6,10 +6,13 @@ version: 0.0.1
 license: MIT
 """
 
-import requests
+import asyncio
 import json
+from collections.abc import Callable
+from typing import Any
+
+import requests
 from pydantic import BaseModel, Field
-from typing import Callable, Any
 
 
 class Tools:
@@ -33,7 +36,7 @@ class Tools:
         self,
         filename: str,
         replacements_json: str,
-        __event_emitter__: Callable[[dict], Any] = None,
+        __event_emitter__: Callable[[dict], Any] | None = None,
     ) -> str:
         """
         Creates a new Google Doc based on the configured template, replacing the requested text.
@@ -58,15 +61,17 @@ class Tools:
             }
 
             # Send to your Google Script
-            response = requests.post(self.valves.DOCS_WEBHOOK_URL, json=payload)
+            response = await asyncio.to_thread(
+                requests.post, self.valves.DOCS_WEBHOOK_URL, json=payload
+            )
 
             if response.status_code != 200:
-                raise Exception(f"Connection error: {response.text}")
+                raise RuntimeError(f"Connection error: {response.text}")
 
             result = response.json()
 
             if result.get("status") == "error":
-                raise Exception(result.get("message"))
+                raise RuntimeError(result.get("message"))
 
             doc_url = result.get("url")
 
@@ -76,11 +81,9 @@ class Tools:
 
             return f"Success! The document was created.\n\n**Name:** {filename}\n**Access here:** [Open Document]({doc_url})"
 
-        except Exception as e:
-            await self._emit_status(
-                __event_emitter__, "error", f"Error: {str(e)}", True
-            )
-            return f"Failed to create document: {str(e)}"
+        except (RuntimeError, requests.RequestException, ValueError, KeyError) as e:
+            await self._emit_status(__event_emitter__, "error", f"Error: {e!s}", True)
+            return f"Failed to create document: {e!s}"
 
     async def _emit_status(self, handler, status_id, description, done):
         if handler:
